@@ -1,0 +1,55 @@
+[project]
+name = "sportbets-workers"
+version = "0.1.0"
+description = "Collectors, resolver, features, models, engine, grader, agents (analytics only — never places bets)"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "psycopg[binary]>=3.1",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "core",
+    "collectors",
+    "adapters",
+    "features",
+    "models",
+    "engine",
+    "grading",
+    "agents",
+    "tools",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",   # pycodestyle / pyflakes
+    "I",             # isort
+    "UP",            # pyupgrade
+    "B",             # bugbear
+    "ANN",           # type hints are mandatory (CLAUDE.md §14)
+]
+ignore = ["ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

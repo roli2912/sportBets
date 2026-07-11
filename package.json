@@ -1,0 +1,10 @@
+{
+  "name": "sportbets",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-sport betting analytics platform — analytics only, never places bets. 18+.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

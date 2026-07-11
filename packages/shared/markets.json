@@ -1,0 +1,59 @@
+{
+  "$comment": "Canonical market taxonomy shared between web and workers. Collectors map provider market names INTO these keys; nothing downstream ever sees provider-specific market names.",
+  "markets": {
+    "h2h": {
+      "name": "Match winner (moneyline)",
+      "sports": ["football", "cs2", "dota2", "valorant"],
+      "has_line": false,
+      "outcomes_hint": ["home", "away", "draw?"]
+    },
+    "double_chance": {
+      "name": "Double chance",
+      "sports": ["football"],
+      "has_line": false,
+      "outcomes_hint": ["1X", "12", "X2"]
+    },
+    "totals": {
+      "name": "Total goals over/under",
+      "sports": ["football"],
+      "has_line": true,
+      "outcomes_hint": ["over", "under"]
+    },
+    "asian_handicap": {
+      "name": "Asian handicap",
+      "sports": ["football"],
+      "has_line": true,
+      "outcomes_hint": ["home", "away"]
+    },
+    "btts": {
+      "name": "Both teams to score",
+      "sports": ["football"],
+      "has_line": false,
+      "outcomes_hint": ["yes", "no"]
+    },
+    "map_handicap": {
+      "name": "Map handicap",
+      "sports": ["cs2", "dota2", "valorant"],
+      "has_line": true,
+      "outcomes_hint": ["home", "away"]
+    },
+    "total_maps": {
+      "name": "Total maps over/under",
+      "sports": ["cs2", "dota2", "valorant"],
+      "has_line": true,
+      "outcomes_hint": ["over", "under"]
+    },
+    "total_rounds": {
+      "name": "Total rounds over/under (per map)",
+      "sports": ["cs2"],
+      "has_line": true,
+      "outcomes_hint": ["over", "under"]
+    },
+    "map_winner": {
+      "name": "Individual map winner",
+      "sports": ["cs2", "dota2", "valorant"],
+      "has_line": false,
+      "outcomes_hint": ["home", "away"]
+    }
+  }
+}

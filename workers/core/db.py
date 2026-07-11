@@ -1,0 +1,127 @@
+"""Postgres access helpers (psycopg 3).
+
+Workers are idempotent: every write here is an upsert keyed on natural keys or
+an append to an append-only table (CLAUDE.md §14). UTC everywhere.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from uuid import UUID
+
+import psycopg
+
+from core.config import database_url
+from core.types import OddsSnapshot
+
+
+def connect(dsn: str | None = None) -> psycopg.Connection:
+    return psycopg.connect(dsn or database_url())
+
+
+def get_event_id(conn: psycopg.Connection, *, provider: str, provider_key: str) -> UUID | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "select id from events where provider_keys @> %s::jsonb",
+            (json.dumps({provider: provider_key}),),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+
+
+def get_or_create_event(
+    conn: psycopg.Connection,
+    *,
+    provider: str,
+    provider_key: str,
+    sport_id: str,
+    commence_time: datetime,
+) -> UUID:
+    """Find an event by this provider's key, or create a skeleton row.
+
+    Team/competition links stay NULL until the entity resolver (Phase 1) fills
+    them; snapshots must accrue from day one regardless (CLAUDE.md §13).
+    Cross-provider event merging is the resolver's job, not the collector's.
+    """
+    key_obj = json.dumps({provider: provider_key})
+    with conn.cursor() as cur:
+        cur.execute(
+            "select id from events where provider_keys @> %s::jsonb",
+            (key_obj,),
+        )
+        row = cur.fetchone()
+        if row:
+            return row[0]
+        cur.execute(
+            """
+            insert into events (sport_id, commence_time, provider_keys)
+            values (%s, %s, %s::jsonb)
+            returning id
+            """,
+            (sport_id, commence_time.astimezone(UTC), key_obj),
+        )
+        return cur.fetchone()[0]  # type: ignore[index]
+
+
+def insert_snapshots(
+    conn: psycopg.Connection,
+    event_id: UUID,
+    snapshots: Iterable[OddsSnapshot],
+) -> int:
+    """Append odds snapshots for a resolved event. Ensures the monthly
+    partition exists before writing."""
+    rows = [
+        (
+            event_id,
+            s.bookmaker,
+            s.market,
+            s.outcome,
+            s.price,
+            s.line,
+            s.captured_at.astimezone(UTC),
+        )
+        for s in snapshots
+    ]
+    if not rows:
+        return 0
+    with conn.cursor() as cur:
+        months = {r[6].date().replace(day=1) for r in rows}
+        for month in months:
+            cur.execute("select ensure_odds_snapshots_partition(%s)", (month,))
+        cur.executemany(
+            """
+            insert into odds_snapshots
+              (event_id, bookmaker, market, outcome, price, line, captured_at)
+            values (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            rows,
+        )
+    return len(rows)
+
+
+def mark_closing_lines(conn: psycopg.Connection, event_id: UUID) -> int:
+    """Mark last pre-kickoff snapshot per (bookmaker, market, outcome, line)
+    as closing. Delegates to the SQL function so the logic has one home."""
+    with conn.cursor() as cur:
+        cur.execute("select mark_closing_lines(%s)", (event_id,))
+        return int(cur.fetchone()[0])  # type: ignore[index]
+
+
+def events_awaiting_closing_capture(conn: psycopg.Connection) -> list[UUID]:
+    """Events past commence_time that still have un-flagged snapshots."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            select distinct e.id
+            from events e
+            join odds_snapshots o on o.event_id = e.id
+            where e.commence_time <= now()
+              and not exists (
+                select 1 from odds_snapshots c
+                where c.event_id = e.id and c.is_closing
+              )
+            """
+        )
+        return [r[0] for r in cur.fetchall()]
