@@ -26,13 +26,15 @@ from pathlib import Path
 
 import psycopg
 
-from collectors.base import collect_once, poll_interval
+from adapters.football import LIGA_I_LEAGUE_ID, ApiFootballAdapter
+from adapters.football import PROVIDER as API_FOOTBALL
+from collectors.base import collect_once, persist_fixtures, poll_interval
 from collectors.closing import run_closing_capture
 from collectors.oddspapi import OddsPapiCollector, load_markets_ref
 from collectors.therundown import TheRundownCollector
 from core.config import EngineConfig
 from core.db import connect, get_last_poll, next_provider_kickoff, set_last_poll
-from core.protocols import OddsCollector
+from core.protocols import OddsCollector, SportAdapter
 from engine.board import refresh_ev_board
 from resolver.resolver import merge_duplicate_events, resolve_events
 
@@ -48,6 +50,17 @@ class Schedule:
     collector: OddsCollector
     min_interval: timedelta  # provider budget floor, overrides cadence near kickoff
     horizon: timedelta  # how far ahead fixtures/odds are requested
+
+
+@dataclass(frozen=True)
+class FixtureSchedule:
+    """Stats-side fixture ingest (SportAdapter, no odds). Fixed interval:
+    schedules change slowly, so the §8 odds cadence does not apply."""
+
+    adapter: SportAdapter
+    provider: str
+    interval: timedelta
+    horizon: timedelta
 
 
 def effective_interval(
@@ -74,9 +87,32 @@ def is_due(
     return now - last_polled_at >= effective_interval(nearest_kickoff, now, min_interval)
 
 
-def run_tick(conn: psycopg.Connection, schedules: list[Schedule], cfg: EngineConfig) -> bool:
+def run_tick(
+    conn: psycopg.Connection,
+    schedules: list[Schedule],
+    cfg: EngineConfig,
+    fixture_schedules: list[FixtureSchedule] | None = None,
+) -> bool:
     """One scheduler pass. Returns True if any provider was polled."""
     polled = False
+
+    for fs in fixture_schedules or []:
+        now = datetime.now(UTC)
+        last = get_last_poll(conn, fs.provider)
+        if last is not None and now - last < fs.interval:
+            continue
+        try:
+            fixtures = fs.adapter.fixtures(now, now + fs.horizon)
+        except Exception as exc:  # noqa: BLE001 — daemon must survive provider hiccups
+            conn.rollback()
+            print(f"[{now:%H:%M:%S}] {fs.provider}: fixtures FAILED: {exc!r}", file=sys.stderr)
+            continue
+        n_fix = persist_fixtures(conn, fixtures)
+        set_last_poll(conn, fs.provider, now)
+        conn.commit()
+        print(f"[{now:%H:%M:%S}] {fs.provider}: {n_fix} fixtures (stats side)")
+        polled = True
+
     for s in schedules:
         now = datetime.now(UTC)
         provider = s.collector.provider
@@ -143,17 +179,38 @@ def build_schedules() -> list[Schedule]:
     ]
 
 
+def build_fixture_schedules() -> list[FixtureSchedule]:
+    football = ApiFootballAdapter(
+        league_ids=[int(x) for x in _csv_env("API_FOOTBALL_LEAGUE_IDS", str(LIGA_I_LEAGUE_ID))],
+        season=int(os.environ.get("API_FOOTBALL_SEASON", "2026")),
+    )
+    return [
+        FixtureSchedule(
+            adapter=football,
+            provider=API_FOOTBALL,
+            # One request per league per poll against 7,500/day (Pro) — daily
+            # is generous; fixtures barely move intra-day.
+            interval=timedelta(hours=float(os.environ.get("API_FOOTBALL_MIN_POLL_HOURS", "24"))),
+            horizon=timedelta(days=14),
+        )
+    ]
+
+
 def main(argv: list[str]) -> int:
     schedules = build_schedules()
+    fixture_schedules = build_fixture_schedules()
     cfg = EngineConfig.from_env()
     conn = connect()
     try:
         if "--once" in argv:
-            run_tick(conn, schedules, cfg)
+            run_tick(conn, schedules, cfg, fixture_schedules)
             return 0
-        print(f"scheduler up: {[s.collector.provider for s in schedules]} (tick {TICK_SECONDS}s)")
+        providers = [s.collector.provider for s in schedules] + [
+            fs.provider for fs in fixture_schedules
+        ]
+        print(f"scheduler up: {providers} (tick {TICK_SECONDS}s)")
         while True:
-            run_tick(conn, schedules, cfg)
+            run_tick(conn, schedules, cfg, fixture_schedules)
             time.sleep(TICK_SECONDS)
     except KeyboardInterrupt:
         print("scheduler stopped")
