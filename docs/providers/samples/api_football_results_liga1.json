@@ -1,0 +1,366 @@
+{
+    "get": "fixtures",
+    "parameters": {
+        "league": "283",
+        "season": "2025",
+        "last": "5"
+    },
+    "errors": [],
+    "results": 5,
+    "paging": {
+        "current": 1,
+        "total": 1
+    },
+    "response": [
+        {
+            "fixture": {
+                "id": 1545548,
+                "referee": "K. Szabolcs",
+                "timezone": "UTC",
+                "date": "2026-06-01T17:30:00+00:00",
+                "timestamp": 1780335000,
+                "periods": {
+                    "first": 1780335000,
+                    "second": 1780338600
+                },
+                "venue": {
+                    "id": null,
+                    "name": "Stadionul Anghel Iordanescu",
+                    "city": "Voluntari"
+                },
+                "status": {
+                    "long": "Match Finished",
+                    "short": "FT",
+                    "elapsed": 90,
+                    "extra": 11
+                }
+            },
+            "league": {
+                "id": 283,
+                "name": "Liga I",
+                "country": "Romania",
+                "logo": "https://media.api-sports.io/football/leagues/283.png",
+                "flag": "https://media.api-sports.io/flags/ro.svg",
+                "season": 2025,
+                "round": "Relegation - Final",
+                "standings": true
+            },
+            "teams": {
+                "home": {
+                    "id": 2578,
+                    "name": "FC Voluntari",
+                    "logo": "https://media.api-sports.io/football/teams/2578.png",
+                    "winner": true
+                },
+                "away": {
+                    "id": 2579,
+                    "name": "AFC Hermannstadt",
+                    "logo": "https://media.api-sports.io/football/teams/2579.png",
+                    "winner": false
+                }
+            },
+            "goals": {
+                "home": 3,
+                "away": 0
+            },
+            "score": {
+                "halftime": {
+                    "home": 0,
+                    "away": 0
+                },
+                "fulltime": {
+                    "home": 3,
+                    "away": 0
+                },
+                "extratime": {
+                    "home": null,
+                    "away": null
+                },
+                "penalty": {
+                    "home": null,
+                    "away": null
+                }
+            }
+        },
+        {
+            "fixture": {
+                "id": 1545547,
+                "referee": "R. Vidican",
+                "timezone": "UTC",
+                "date": "2026-05-31T17:30:00+00:00",
+                "timestamp": 1780248600,
+                "periods": {
+                    "first": 1780248600,
+                    "second": 1780252200
+                },
+                "venue": {
+                    "id": null,
+                    "name": "Central Stadium Hagi Academy",
+                    "city": "Ovidiu"
+                },
+                "status": {
+                    "long": "Match Finished",
+                    "short": "PEN",
+                    "elapsed": 120,
+                    "extra": null
+                }
+            },
+            "league": {
+                "id": 283,
+                "name": "Liga I",
+                "country": "Romania",
+                "logo": "https://media.api-sports.io/football/leagues/283.png",
+                "flag": "https://media.api-sports.io/flags/ro.svg",
+                "season": 2025,
+                "round": "Relegation - Final",
+                "standings": true
+            },
+            "teams": {
+                "home": {
+                    "id": 2596,
+                    "name": "Farul Constanta",
+                    "logo": "https://media.api-sports.io/football/teams/2596.png",
+                    "winner": true
+                },
+                "away": {
+                    "id": 2586,
+                    "name": "Chindia Targoviste",
+                    "logo": "https://media.api-sports.io/football/teams/2586.png",
+                    "winner": false
+                }
+            },
+            "goals": {
+                "home": 1,
+                "away": 1
+            },
+            "score": {
+                "halftime": {
+                    "home": 0,
+                    "away": 1
+                },
+                "fulltime": {
+                    "home": 1,
+                    "away": 1
+                },
+                "extratime": {
+                    "home": null,
+                    "away": null
+                },
+                "penalty": {
+                    "home": 4,
+                    "away": 2
+                }
+            }
+        },
+        {
+            "fixture": {
+                "id": 1546371,
+                "referee": "M. Barbu",
+                "timezone": "UTC",
+                "date": "2026-05-29T17:30:00+00:00",
+                "timestamp": 1780075800,
+                "periods": {
+                    "first": 1780075800,
+                    "second": 1780079400
+                },
+                "venue": {
+                    "id": null,
+                    "name": "Stadionul Arcul de Triumf",
+                    "city": "Bucharest"
+                },
+                "status": {
+                    "long": "Match Finished",
+                    "short": "AET",
+                    "elapsed": 120,
+                    "extra": null
+                }
+            },
+            "league": {
+                "id": 283,
+                "name": "Liga I",
+                "country": "Romania",
+                "logo": "https://media.api-sports.io/football/leagues/283.png",
+                "flag": "https://media.api-sports.io/flags/ro.svg",
+                "season": 2025,
+                "round": "Final",
+                "standings": true
+            },
+            "teams": {
+                "home": {
+                    "id": 635,
+                    "name": "Dinamo Bucuresti",
+                    "logo": "https://media.api-sports.io/football/teams/635.png",
+                    "winner": false
+                },
+                "away": {
+                    "id": 559,
+                    "name": "FCSB",
+                    "logo": "https://media.api-sports.io/football/teams/559.png",
+                    "winner": true
+                }
+            },
+            "goals": {
+                "home": 1,
+                "away": 2
+            },
+            "score": {
+                "halftime": {
+                    "home": 0,
+                    "away": 1
+                },
+                "fulltime": {
+                    "home": 1,
+                    "away": 1
+                },
+                "extratime": {
+                    "home": 0,
+                    "away": 1
+                },
+                "penalty": {
+                    "home": null,
+                    "away": null
+                }
+            }
+        },
+        {
+            "fixture": {
+                "id": 1531648,
+                "referee": "I. Demetrescu",
+                "timezone": "UTC",
+                "date": "2026-05-25T17:30:00+00:00",
+                "timestamp": 1779730200,
+                "periods": {
+                    "first": 1779730200,
+                    "second": 1779733800
+                },
+                "venue": {
+                    "id": null,
+                    "name": "Superbet Arena - Giulesti",
+                    "city": "Bucharest"
+                },
+                "status": {
+                    "long": "Match Finished",
+                    "short": "FT",
+                    "elapsed": 90,
+                    "extra": 4
+                }
+            },
+            "league": {
+                "id": 283,
+                "name": "Liga I",
+                "country": "Romania",
+                "logo": "https://media.api-sports.io/football/leagues/283.png",
+                "flag": "https://media.api-sports.io/flags/ro.svg",
+                "season": 2025,
+                "round": "Championship Group - 10",
+                "standings": true
+            },
+            "teams": {
+                "home": {
+                    "id": 6231,
+                    "name": "Rapid",
+                    "logo": "https://media.api-sports.io/football/teams/6231.png",
+                    "winner": null
+                },
+                "away": {
+                    "id": 632,
+                    "name": "Universitatea Craiova",
+                    "logo": "https://media.api-sports.io/football/teams/632.png",
+                    "winner": null
+                }
+            },
+            "goals": {
+                "home": 0,
+                "away": 0
+            },
+            "score": {
+                "halftime": {
+                    "home": 0,
+                    "away": 0
+                },
+                "fulltime": {
+                    "home": 0,
+                    "away": 0
+                },
+                "extratime": {
+                    "home": null,
+                    "away": null
+                },
+                "penalty": {
+                    "home": null,
+                    "away": null
+                }
+            }
+        },
+        {
+            "fixture": {
+                "id": 1545546,
+                "referee": "I. Kovacs",
+                "timezone": "UTC",
+                "date": "2026-05-24T17:30:00+00:00",
+                "timestamp": 1779643800,
+                "periods": {
+                    "first": 1779643800,
+                    "second": 1779647400
+                },
+                "venue": {
+                    "id": null,
+                    "name": "Arena Nationala",
+                    "city": "Bucharest"
+                },
+                "status": {
+                    "long": "Match Finished",
+                    "short": "AET",
+                    "elapsed": 120,
+                    "extra": null
+                }
+            },
+            "league": {
+                "id": 283,
+                "name": "Liga I",
+                "country": "Romania",
+                "logo": "https://media.api-sports.io/football/leagues/283.png",
+                "flag": "https://media.api-sports.io/flags/ro.svg",
+                "season": 2025,
+                "round": "Semi-finals",
+                "standings": true
+            },
+            "teams": {
+                "home": {
+                    "id": 559,
+                    "name": "FCSB",
+                    "logo": "https://media.api-sports.io/football/teams/559.png",
+                    "winner": true
+                },
+                "away": {
+                    "id": 2581,
+                    "name": "FC Botosani",
+                    "logo": "https://media.api-sports.io/football/teams/2581.png",
+                    "winner": false
+                }
+            },
+            "goals": {
+                "home": 4,
+                "away": 3
+            },
+            "score": {
+                "halftime": {
+                    "home": 1,
+                    "away": 1
+                },
+                "fulltime": {
+                    "home": 3,
+                    "away": 3
+                },
+                "extratime": {
+                    "home": 1,
+                    "away": 0
+                },
+                "penalty": {
+                    "home": null,
+                    "away": null
+                }
+            }
+        }
+    ]
+}

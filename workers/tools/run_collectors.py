@@ -34,6 +34,7 @@ from core.config import EngineConfig
 from core.db import connect, get_last_poll, next_provider_kickoff, set_last_poll
 from core.protocols import OddsCollector
 from engine.board import refresh_ev_board
+from resolver.resolver import merge_duplicate_events, resolve_events
 
 TICK_SECONDS = 60.0
 # No known upcoming events -> still poll at this pace to discover fixtures.
@@ -92,6 +93,19 @@ def run_tick(conn: psycopg.Connection, schedules: list[Schedule], cfg: EngineCon
         conn.commit()
         print(f"[{now:%H:%M:%S}] {provider}: {n_fix} fixtures, {n_snap} snapshots")
         polled = True
+
+    if polled:
+        # Entity resolution after fresh fixtures: link raw team names, then
+        # merge cross-provider duplicates (§7). Ambiguous names go to the
+        # review queue (tools/review.py) and stay blocked, never guessed.
+        counters = resolve_events(conn)
+        merged = merge_duplicate_events(conn)
+        conn.commit()
+        if counters["sides_resolved"] or counters["sides_queued"] or merged:
+            print(
+                f"resolver: {counters['sides_resolved']} sides linked, "
+                f"{counters['sides_queued']} queued for review, {merged} events merged"
+            )
 
     marked = run_closing_capture(conn)
     if polled or marked:

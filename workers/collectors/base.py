@@ -66,6 +66,8 @@ def persist_fixtures(conn: psycopg.Connection, fixtures: list[Fixture]) -> int:
             provider_key=f.provider_key,
             sport_id=f.sport_id,
             commence_time=f.commence_time,
+            home_name_raw=f.home_name,
+            away_name_raw=f.away_name,
         )
     return len(fixtures)
 

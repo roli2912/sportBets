@@ -38,12 +38,15 @@ def get_or_create_event(
     provider_key: str,
     sport_id: str,
     commence_time: datetime,
+    home_name_raw: str | None = None,
+    away_name_raw: str | None = None,
 ) -> UUID:
     """Find an event by this provider's key, or create a skeleton row.
 
-    Team/competition links stay NULL until the entity resolver (Phase 1) fills
-    them; snapshots must accrue from day one regardless (CLAUDE.md §13).
-    Cross-provider event merging is the resolver's job, not the collector's.
+    Raw provider team names are stored so the entity resolver (§7) can link
+    canonical team ids later; snapshots must accrue from day one regardless
+    (CLAUDE.md §13). Cross-provider event merging is the resolver's job, not
+    the collector's.
     """
     key_obj = json.dumps({provider: provider_key})
     with conn.cursor() as cur:
@@ -53,14 +56,25 @@ def get_or_create_event(
         )
         row = cur.fetchone()
         if row:
+            # Backfill raw names on rows created before this column existed.
+            cur.execute(
+                """
+                update events
+                set home_name_raw = coalesce(home_name_raw, %s),
+                    away_name_raw = coalesce(away_name_raw, %s)
+                where id = %s
+                """,
+                (home_name_raw, away_name_raw, row[0]),
+            )
             return row[0]
         cur.execute(
             """
-            insert into events (sport_id, commence_time, provider_keys)
-            values (%s, %s, %s::jsonb)
+            insert into events
+              (sport_id, commence_time, provider_keys, home_name_raw, away_name_raw)
+            values (%s, %s, %s::jsonb, %s, %s)
             returning id
             """,
-            (sport_id, commence_time.astimezone(UTC), key_obj),
+            (sport_id, commence_time.astimezone(UTC), key_obj, home_name_raw, away_name_raw),
         )
         return cur.fetchone()[0]  # type: ignore[index]
 
