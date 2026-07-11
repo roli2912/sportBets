@@ -101,6 +101,42 @@ def insert_snapshots(
     return len(rows)
 
 
+def get_last_poll(conn: psycopg.Connection, provider: str) -> datetime | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "select last_polled_at from collector_runs where provider = %s",
+            (provider,),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+
+
+def set_last_poll(conn: psycopg.Connection, provider: str, polled_at: datetime) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            insert into collector_runs (provider, last_polled_at)
+            values (%s, %s)
+            on conflict (provider) do update set last_polled_at = excluded.last_polled_at
+            """,
+            (provider, polled_at.astimezone(UTC)),
+        )
+
+
+def next_provider_kickoff(
+    conn: psycopg.Connection, provider: str, now: datetime
+) -> datetime | None:
+    """Earliest upcoming commence_time among events known to this provider —
+    drives the §8 cadence band for the provider's next poll."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "select min(commence_time) from events where provider_keys ? %s and commence_time > %s",
+            (provider, now.astimezone(UTC)),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+
+
 def mark_closing_lines(conn: psycopg.Connection, event_id: UUID) -> int:
     """Mark last pre-kickoff snapshot per (bookmaker, market, outcome, line)
     as closing. Delegates to the SQL function so the logic has one home."""
