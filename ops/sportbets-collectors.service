@@ -1,0 +1,44 @@
+# sportbets-collectors.service — cadence-aware collection daemon on the VPS.
+#
+# Install (Hetzner, Debian/Ubuntu, as a non-root `sportbets` user):
+#   1. git clone the repo to /opt/sportbets && cd /opt/sportbets/workers
+#   2. curl -LsSf https://astral.sh/uv/install.sh | sh   (as the sportbets user)
+#   3. uv sync
+#   4. create /opt/sportbets/.env  (DATABASE_URL=Supabase pooler URL, provider
+#      keys; chmod 600, owned by sportbets — never committed)
+#   5. sudo cp ops/sportbets-collectors.service /etc/systemd/system/
+#   6. sudo systemctl daemon-reload && sudo systemctl enable --now sportbets-collectors
+#   7. journalctl -u sportbets-collectors -f   (tick output + resolver/queue lines)
+#
+# The daemon is idempotent (CLAUDE.md §14): crashes and restarts are safe,
+# re-polls are no-ops within cadence windows, picks/settlements dedupe on
+# insert. Review-queue items still need a human:
+#   uv run python -m tools.review list
+
+[Unit]
+Description=sportBets odds/stats collection scheduler (60s tick)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sportbets
+WorkingDirectory=/opt/sportbets/workers
+# core.config load_dotenv() reads /opt/sportbets/.env via cwd parent lookup;
+# EnvironmentFile makes it explicit and systemd-native as well.
+EnvironmentFile=/opt/sportbets/.env
+ExecStart=/home/sportbets/.local/bin/uv run python -m tools.run_collectors
+Restart=on-failure
+RestartSec=30
+# Budget floors are env-config; override here if needed, e.g.:
+# Environment=ODDSPAPI_MIN_POLL_HOURS=12 THERUNDOWN_MIN_POLL_HOURS=1
+
+# Hardening (analytics daemon needs nothing beyond outbound network + repo dir)
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/sportbets
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

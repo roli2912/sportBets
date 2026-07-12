@@ -28,19 +28,32 @@ import psycopg
 
 from adapters.football import LIGA_I_LEAGUE_ID, ApiFootballAdapter
 from adapters.football import PROVIDER as API_FOOTBALL
+from agents.explainer import explain_pending
 from collectors.base import collect_once, persist_fixtures, poll_interval
 from collectors.closing import run_closing_capture
 from collectors.oddspapi import OddsPapiCollector, load_markets_ref
 from collectors.therundown import TheRundownCollector
 from core.config import EngineConfig
-from core.db import connect, get_last_poll, next_provider_kickoff, set_last_poll
+from core.db import (
+    connect,
+    get_last_poll,
+    next_provider_kickoff,
+    persist_results,
+    set_last_poll,
+)
 from core.protocols import OddsCollector, SportAdapter
 from engine.board import refresh_ev_board
+from engine.picks import ensure_market_models, publish_from_board
+from grading.grade import grade_picks
 from resolver.resolver import merge_duplicate_events, resolve_events
 
 TICK_SECONDS = 60.0
 # No known upcoming events -> still poll at this pace to discover fixtures.
 DISCOVERY_INTERVAL = timedelta(hours=24)
+# How far back a results poll looks for finished fixtures to grade.
+RESULTS_LOOKBACK = timedelta(days=7)
+# §11: explainer runs in nightly batches.
+EXPLAINER_INTERVAL = timedelta(hours=24)
 
 _SAMPLES = Path(__file__).resolve().parents[2] / "docs" / "providers" / "samples"
 
@@ -103,14 +116,16 @@ def run_tick(
             continue
         try:
             fixtures = fs.adapter.fixtures(now, now + fs.horizon)
+            results = fs.adapter.results(now - RESULTS_LOOKBACK)
         except Exception as exc:  # noqa: BLE001 — daemon must survive provider hiccups
             conn.rollback()
             print(f"[{now:%H:%M:%S}] {fs.provider}: fixtures FAILED: {exc!r}", file=sys.stderr)
             continue
         n_fix = persist_fixtures(conn, fixtures)
+        n_res = persist_results(conn, results)
         set_last_poll(conn, fs.provider, now)
         conn.commit()
-        print(f"[{now:%H:%M:%S}] {fs.provider}: {n_fix} fixtures (stats side)")
+        print(f"[{now:%H:%M:%S}] {fs.provider}: {n_fix} fixtures, {n_res} results (stats side)")
         polled = True
 
     for s in schedules:
@@ -146,8 +161,34 @@ def run_tick(
     marked = run_closing_capture(conn)
     if polled or marked:
         n_rows = refresh_ev_board(conn, cfg)
+        # Layer-1 shadow track record: board edges above the config threshold
+        # become immutable picks; the grader settles what has results (§2, §8).
+        ensure_market_models(conn, cfg)
+        n_picks = publish_from_board(conn, cfg)
+        n_graded = grade_picks(conn)
+        conn.commit()
         flagged = sum(marked.values())
-        print(f"closing: {flagged} snapshots flagged; ev_board: {n_rows} rows")
+        print(
+            f"closing: {flagged} snapshots flagged; ev_board: {n_rows} rows; "
+            f"picks: +{n_picks} published, {n_graded} graded"
+        )
+
+    # §11: explainer runs as a nightly batch; failures never block collection.
+    now = datetime.now(UTC)
+    last_explained = get_last_poll(conn, "explainer")
+    if os.environ.get("ANTHROPIC_API_KEY") and (
+        last_explained is None or now - last_explained >= EXPLAINER_INTERVAL
+    ):
+        try:
+            n_expl = explain_pending(conn)
+            set_last_poll(conn, "explainer", now)
+            conn.commit()
+            if n_expl:
+                print(f"explainer: {n_expl} rationales stored")
+        except Exception as exc:  # noqa: BLE001 — daemon must survive API hiccups
+            conn.rollback()
+            print(f"explainer FAILED: {exc!r}", file=sys.stderr)
+
     return polled
 
 

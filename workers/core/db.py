@@ -14,7 +14,7 @@ from uuid import UUID
 import psycopg
 
 from core.config import database_url
-from core.types import OddsSnapshot
+from core.types import OddsSnapshot, Result
 
 
 def connect(dsn: str | None = None) -> psycopg.Connection:
@@ -113,6 +113,37 @@ def insert_snapshots(
             rows,
         )
     return len(rows)
+
+
+def persist_results(conn: psycopg.Connection, results: Iterable[Result]) -> int:
+    """Attach provider results to known events and mark them finished.
+
+    First provider to report wins — event_results rows never mutate (they feed
+    grading, §10.4). Results for events we never ingested are skipped silently:
+    they belong to fixtures outside our window, not to the pick universe.
+    """
+    written = 0
+    with conn.cursor() as cur:
+        for r in results:
+            event_id = get_event_id(conn, provider=r.provider, provider_key=r.provider_key)
+            if event_id is None:
+                continue
+            cur.execute(
+                """
+                insert into event_results
+                  (event_id, provider, home_score, away_score, finished_at)
+                values (%s, %s, %s, %s, %s)
+                on conflict (event_id) do nothing
+                """,
+                (event_id, r.provider, r.home_score, r.away_score, r.finished_at),
+            )
+            if cur.rowcount:
+                cur.execute(
+                    "update events set status = 'finished' where id = %s",
+                    (event_id,),
+                )
+                written += 1
+    return written
 
 
 def get_last_poll(conn: psycopg.Connection, provider: str) -> datetime | None:

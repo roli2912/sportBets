@@ -52,6 +52,34 @@ def test_append_only_trigger_exists(conn):
         assert cur.fetchone()[0] == 1
 
 
+def test_rationale_backfill_allowed_once(conn, pick_id):
+    """§11 exception: a NULL rationale may be backfilled exactly once; a
+    non-null rationale is immutable like everything else."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "update picks set rationale = 'explainer text' where id = %s",
+            (pick_id,),
+        )
+        assert cur.rowcount == 1
+        with pytest.raises(psycopg.errors.RaiseException, match="append-only"):
+            cur.execute(
+                "update picks set rationale = 'rewritten' where id = %s",
+                (pick_id,),
+            )
+
+
+def test_rationale_backfill_cannot_smuggle_other_changes(conn, pick_id):
+    with pytest.raises(psycopg.errors.RaiseException, match="append-only"):
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update picks set rationale = 'text', price_at_publish = 9.99
+                where id = %s
+                """,
+                (pick_id,),
+            )
+
+
 def test_settlement_insert_allowed_once(conn, pick_id):
     """Settlements append normally; a second settlement for the same pick is
     rejected by the primary key."""
