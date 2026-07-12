@@ -31,6 +31,9 @@ EnvironmentFile=/opt/sportbets/.env
 # which ProtectHome=read-only forbids. After `git pull` with dependency
 # changes, re-run `uv sync` in /opt/sportbets/workers before restarting.
 ExecStart=/opt/sportbets/workers/.venv/bin/python -m tools.run_collectors
+# stdout is block-buffered under systemd (not a tty) — without this the tick
+# lines never reach journald and only stderr is visible.
+Environment=PYTHONUNBUFFERED=1
 Restart=on-failure
 RestartSec=30
 # Budget floors are env-config; override here if needed, e.g.:
