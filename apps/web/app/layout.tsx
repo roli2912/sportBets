@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import ComplianceFooter from "@/components/ComplianceFooter";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <nav>
               <Link href="/">+EV board</Link>
               <Link href="/track-record">Track record</Link>
+              <Link href="/methodology">Methodology</Link>
             </nav>
             <span className="env">dev · UTC</span>
           </div>
@@ -31,25 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main>
           <div className="container">{children}</div>
         </main>
-        <footer className="site">
-          <div className="container">
-            <div>
-              18+ only. This is an educational analytics tool — it never places
-              bets and never handles wagers. Nothing on this site is betting
-              advice or a promise of profit.
-            </div>
-            <div>
-              Struggling with gambling?{" "}
-              <a href="https://www.begambleaware.org" rel="noopener">
-                BeGambleAware
-              </a>{" "}
-              ·{" "}
-              <a href="https://jocresponsabil.ro" rel="noopener">
-                Joc Responsabil (RO)
-              </a>
-            </div>
-          </div>
-        </footer>
+        <ComplianceFooter />
       </body>
     </html>
   );

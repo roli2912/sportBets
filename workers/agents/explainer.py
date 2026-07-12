@@ -37,7 +37,13 @@ ANTHROPIC_VERSION = "2023-06-01"
 DEFAULT_MODEL = "claude-sonnet-4-6"
 
 # §2.4 — CI also greps these in web/bot copy; the agent must never emit them.
-BANNED_STRINGS = ("guaranteed", "sure win", "can't lose", "risk-free profit")
+# This tuple IS the validator's denylist, not public copy, hence the marker.
+BANNED_STRINGS = (
+    "guaranteed",  # banned-strings-allow
+    "sure win",  # banned-strings-allow
+    "can't lose",  # banned-strings-allow
+    "risk-free profit",  # banned-strings-allow
+)
 
 SYSTEM_PROMPT = """You explain betting-analytics picks for an educational audience.
 You are given ONE pick as a JSON payload. Write a rationale of AT MOST three sentences.
