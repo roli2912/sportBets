@@ -46,6 +46,7 @@ from core.db import (
 )
 from core.protocols import OddsCollector, SportAdapter
 from engine.board import refresh_ev_board
+from engine.daily_feed import build_daily_feed
 from engine.picks import ensure_market_models, publish_from_board
 from grading.grade import grade_picks
 from resolver.resolver import merge_duplicate_events, resolve_events
@@ -194,6 +195,15 @@ def run_tick(
             f"closing: {flagged} snapshots flagged; ev_board: {n_rows} rows; "
             f"picks: +{n_picks} published, {n_graded} graded"
         )
+
+    # Daily Best Bets: freeze today's feed once per UTC day after the build
+    # hour. Idempotent — a frozen date is never rewritten (append-only table).
+    now = datetime.now(UTC)
+    if now.hour >= int(os.environ.get("FEED_BUILD_HOUR_UTC", "6")):
+        n_feed = build_daily_feed(conn)
+        conn.commit()
+        if n_feed:
+            print(f"daily feed: {n_feed} entries frozen for {now:%Y-%m-%d}")
 
     # §11: explainer runs as a nightly batch; failures never block collection.
     now = datetime.now(UTC)

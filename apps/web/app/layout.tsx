@@ -23,7 +23,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               sport<span>bets</span>
             </Link>
             <nav>
-              <Link href="/">+EV board</Link>
+              <Link href="/">Daily Best Bets</Link>
+              <Link href="/board">+EV board</Link>
               <Link href="/track-record">Track record</Link>
               <Link href="/methodology">Methodology</Link>
             </nav>
