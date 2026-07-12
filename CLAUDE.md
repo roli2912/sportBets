@@ -10,18 +10,27 @@ Last reviewed: 2026-07-10. Provider pricing changes often — verify before subs
 
 ## 1. What this project is
 
-A Europe-first, multi-sport betting analytics platform built by a solo developer.
-Two product layers that scale differently:
+A **multi-sport daily betting research app for European bettors**, built by a solo
+developer. Positioning line: *"Your daily betting research desk for European sports —
+every pick explained, every result public."*
+
+The public identity is the **multi-sport daily feed** (Daily Best Bets): every day, a
+small, capped list of researched picks across all covered sports, each explained, each
+timestamped, each graded in public. This is NOT a CS2-flagship product; no single sport
+carries the brand.
+
+Two product layers power that feed (architecture unchanged):
 
 - **Layer 1 — Market engine (horizontal, all sports from day one):** +EV detection,
   line shopping, and closing-line tracking. Compares soft-bookmaker prices against a
   de-vigged sharp reference. Requires no sport expertise — only odds data and math.
-  This layer IS the multi-sport coverage.
-- **Layer 2 — Flagship predictive models (vertical, added one sport at a time):**
-  Proprietary models with public, CLV-graded track records. Launch order:
-  CS2 (founder domain expertise), then one soft football vertical (Liga I Romania /
-  Eredivisie), then expand (Dota, Valorant, more leagues) — each only after passing
-  the validation gates in §9.
+  This layer IS the multi-sport coverage, and its qualifying edges feed the daily
+  board as clearly-labeled market-edge signals.
+- **Layer 2 — Per-sport predictive models (vertical, added one at a time):**
+  Proprietary models with public, CLV-graded track records. CS2 and Liga I football
+  are the first two verticals (founder domain expertise + soft market), then expand
+  (Eredivisie, Dota, Valorant, more leagues) — each earning the "verified" badge only
+  after passing the validation gates in §9.
 
 Differentiators, in priority order:
 1. **Radical verification** — every pick timestamped pre-match, graded vs closing line,
@@ -372,6 +381,13 @@ forbidden and defeats the entire trust thesis.
 - Report always: N, CLV distribution, flat-stake ROI, per-league splits, calibration
   plot. Never headline win% alone.
 
+**Visibility vs badge (added 2026-07-12 pivot ADR — thresholds above untouched):**
+all picks and records are publicly visible from day one, clearly labeled by model
+status (`shadow`, `public`). The pre-registered gates control (a) the "verified"
+badge and (b) entry into the Daily Best Bets feed — NOT raw visibility. Shadow
+picks are shown as clearly-labeled unverified signals; hiding them would weaken
+the radical-verification thesis, and blurring the labels is forbidden (§2.4 spirit).
+
 ## 10. Backtest harness rules (leakage guards)
 
 1. Walk-forward splits only. No random shuffles, ever.
@@ -389,9 +405,10 @@ forbidden and defeats the entire trust thesis.
 
 ## 11. Agent layer (Claude API)
 
-- `news_watcher`: polls roster/injury/news sources per sport; when `news_time` is
-  later than the last sharp-line move on an affected market, emit a stale-line
-  candidate to the ADMIN review feed. Agents never auto-publish picks.
+- `news_watcher` — **DEFERRED (post-launch)**: polls roster/injury/news sources per
+  sport; when `news_time` is later than the last sharp-line move on an affected
+  market, emit a stale-line candidate to the ADMIN review feed. Agents never
+  auto-publish picks. Not built before the mid-August 2026 launch (§15).
 - `explainer`: input = pick + structured feature payload (JSON only); output = a
   3-sentence rationale stored in `picks.rationale`. The prompt must forbid inventing
   numbers not present in the payload; validate output against the payload before save.
@@ -420,20 +437,34 @@ Baseline posture: subscription analytics product, no wagering, no operator links
 
 ---
 
-## 13. Roadmap
+## 13. Roadmap (rewritten 2026-07-12 — multi-sport daily-feed pivot; see ADR)
 
-- **Phase 0 (wk 1–2):** repo scaffold, Postgres schema + migrations, TheRundown/
-  OddsPapi collectors live on Hetzner (snapshots start accruing day one — this is
-  also the future backtest dataset), CI with immutability + banned-strings checks.
-- **Phase 1 (wk 3–6):** entity resolver + review queue, football adapter
-  (API-Football), +EV engine, minimal Next.js site with live +EV board.
-- **Phase 2 (wk 6–12):** CS2 feature module + model v1 into `shadow`; Telegram
-  publishing; public track-record page (per-model N, ROI, CLV, equity curve, full
-  pick log including losses); explainer agent.
-- **Phase 3 (mo 3–6):** evaluate gates -> first `public` model; free verified picks
-  as the growth loop; Liga I / Eredivisie model into shadow; build-in-public posting.
-- **Phase 4 (mo 6+):** paywall (€12–15/mo) once a public model has a defensible
-  record; apply GRID / licensed esports data; explore B2B probability feed.
+Phases 0–2 of the original roadmap are complete (collectors live, resolver + review
+queue, +EV engine, site with +EV board and track record, explainer agent, CS2
+adapter). Remaining work, in order:
+
+- **Task 2 — Daily Best Bets feed (the product's public identity):**
+  `engine/daily_feed.py` — candidates = gate-passed Layer-2 picks + qualifying
+  ev_board entries; rank, dedupe correlated markets, cap per day (config, default
+  5–8). Two label kinds, never blurred: "verified" model picks vs market-edge
+  signals. Feed is persisted immutably per date, referencing pick ids. Homepage =
+  the feed + record strip + track-record link. `/api/feed/today` JSON endpoint.
+- **Task 3 — Backtest harness** with the §10 leakage audit; smoke-tested on
+  captured Layer-1 snapshots. Prerequisite for ANY Layer-2 model entering shadow.
+- **Task 4 — Telegram publishing** (morning digest + per-pick posts, 18+ line from
+  workers/publishing/templates.py) + nightly append-only JSONL proof export of
+  picks to a public GitHub repo (idempotent, appends new files only).
+- **Task 5 — Football FeatureModule + model v1** (Liga I / Eredivisie): form,
+  home/away splits, odds-derived features; calibrated logistic/GBM; through the
+  Task-3 harness; research -> shadow only via §9.
+- **Task 6 — CS2 FeatureModule + model v1**: same pattern; PandaScore free tier is
+  prototyping-only (ToS, §5); GRID application on the radar for licensed data.
+- **Task 7 — Programmatic SEO scaffold**: match-preview pages for one league,
+  sitemap.xml, structured data; ADR for anything irreversible.
+
+**Deferred (post-launch):** news_watcher agent (§11), Shin de-vig upgrade (§8),
+admin web UI (CLI review tool suffices), The Odds API / football-data.org / GRID
+wiring.
 
 ---
 
@@ -452,3 +483,23 @@ Baseline posture: subscription analytics product, no wagering, no operator links
   which should never happen, see §9) gets an ADR in `/docs/decisions`.
 - When asked to "add a sport": implement SportAdapter + FeatureModule + alias seeds +
   docs page. If the request implies touching shared plumbing, stop and flag it.
+
+---
+
+## 15. Go-to-market (added 2026-07-12 pivot)
+
+- **Funnel:** free daily pick (the Daily Best Bets feed + Telegram digest) →
+  premium subscription at **€9.99–14.99/mo**, annual = 2 months free. Premium =
+  full feed, earlier delivery, deeper rationale/analytics. Free tier always keeps
+  at least one verified pick per day — the track record itself is the marketing.
+- **Channels (organic only):**
+  1. Programmatic SEO — match-preview pages per league (Task 7), structured data,
+     internal links to the track record.
+  2. Telegram/Discord daily digest (Task 4) — shareable, 18+ line on every message.
+  3. Short-form video — daily 30–60s "today's board + yesterday's graded results".
+  4. Build-in-public — weekly posts with real numbers (N, CLV, ROI), losses included.
+- **Launch window:** European club season kickoff, **mid-August 2026**.
+- **Paid ads are closed** without gambling-advertising certification (and NL bans
+  untargeted gambling ads outright, §12) — do not budget for them; organic only.
+- All GTM copy obeys §2.4/§2.5 (banned strings, 18+, responsible-gambling links)
+  and §12 (no affiliate links without legal sign-off).
