@@ -1,0 +1,40 @@
+{
+  "kind": "backtest",
+  "model_id": "smoke_sharp_mirror_v0",
+  "sport_id": "cs2",
+  "market": "h2h",
+  "line": null,
+  "bookmaker": "unibet",
+  "data_range": {
+    "start": "2026-06-12T20:57:53.037180+00:00",
+    "end": "2026-07-12T20:57:53.037180+00:00"
+  },
+  "git_sha": "2509e94be8d14d888e6a5333f971b8d9f09e9b25",
+  "config": {
+    "feature_module": "SharpRefFeatureModule",
+    "model": "smoke_sharp_mirror_v0",
+    "sport_id": "cs2",
+    "market": "h2h",
+    "bookmaker": "unibet",
+    "sharp_bookmaker": "pinnacle",
+    "ev_threshold": 0.025,
+    "margin_haircut": 0.005
+  },
+  "config_hash": "cdf481ec9d24fdbd226039cff3b030784ab4b4b4b72e113d294ac1320542ddb3",
+  "created_at": "2026-07-12T20:57:53.834891+00:00",
+  "n_events": 0,
+  "n_events_priced": 0,
+  "n_picks": 0,
+  "record": {
+    "win": 0,
+    "loss": 0,
+    "push": 0
+  },
+  "flat_stake_roi": null,
+  "clv": {
+    "n": 0,
+    "mean": null
+  },
+  "calibration": [],
+  "picks": []
+}
