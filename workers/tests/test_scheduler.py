@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from tools.run_collectors import DISCOVERY_INTERVAL, effective_interval, is_due
+import httpx
+
+from tools.run_collectors import DISCOVERY_INTERVAL, effective_interval, is_client_error, is_due
 
 NOW = datetime(2026, 7, 11, 12, 0, tzinfo=UTC)
 
@@ -34,3 +36,21 @@ def test_is_due_first_run_and_elapsed() -> None:
     assert is_due(None, kickoff, NOW, floor)  # never polled -> due
     assert not is_due(NOW - timedelta(minutes=59), kickoff, NOW, floor)
     assert is_due(NOW - timedelta(hours=1), kickoff, NOW, floor)
+
+
+def _http_error(status: int) -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "https://api.test/odds")
+    response = httpx.Response(status, request=request)
+    return httpx.HTTPStatusError(f"{status}", request=request, response=response)
+
+
+def test_is_client_error_stamps_only_non_retryable_4xx() -> None:
+    """4xx (except 429) stamps last_poll so a stale config (e.g. a finished
+    OddsPapi tournament 404ing) cannot retry-loop every 60s tick and burn the
+    provider budget. 429/5xx/network errors stay unstamped: transient."""
+    assert is_client_error(_http_error(404))
+    assert is_client_error(_http_error(400))
+    assert not is_client_error(_http_error(429))  # rate limit -> retry next tick
+    assert not is_client_error(_http_error(500))
+    assert not is_client_error(httpx.ConnectError("boom"))
+    assert not is_client_error(ValueError("not http at all"))

@@ -27,7 +27,7 @@ Verified against the live v4 API on 2026-07-11.
 | Endpoint | Notes |
 |---|---|
 | `GET /sports` | 10=Soccer, 16=Dota 2, 17=CS2, 61=Valorant; sample: `samples/oddspapi_sports.json` |
-| `GET /tournaments?sportId=17` | CS2: 325 tournaments; BLAST Premier = 31621; sample: `samples/oddspapi_tournaments_cs2.json` |
+| `GET /tournaments?sportId=17` | CS2: 325 tournaments; rows carry LIVE counts (`futureFixtures`/`upcomingFixtures`/`liveFixtures`) — the collector discovers active tournaments from these each poll (cap: `ODDSPAPI_MAX_TOURNAMENTS`, default 2); sample: `samples/oddspapi_tournaments_cs2.json` |
 | `GET /fixtures?tournamentId={id}` | **singular** param; includes participant names/status; sample: `samples/oddspapi_fixtures_cs2_blast.json` |
 | `GET /odds-by-tournaments?tournamentIds={csv}&bookmaker={one}` | **exactly one bookmaker per request**; sample: `samples/oddspapi_odds_cs2_blast.json` |
 | `GET /markets` | marketId reference (~9MB raw); trimmed copy for sports 10/16/17/61: `samples/oddspapi_markets.json` |
@@ -73,6 +73,15 @@ the reference: `1`->home, `2`->away, `X`->draw, Over/Under, Yes/No.
 - Timestamps ISO-8601 with `Z` and milliseconds.
 - `bookmakerOutcomeId` strings like `"2.5/over"` / `"-1.5/home"` duplicate
   the reference handicap — the collector uses the reference, not the string.
+- `/odds-by-tournaments` returns **404 once a tournament has finished / has no
+  active odds** (observed 2026-07-12, the day after BLAST 31621 ended, id was
+  valid the day before). Hence: (a) the collector discovers active tournaments
+  from `/tournaments` live counts instead of pinning ids, and (b) the scheduler
+  stamps `last_poll` on 4xx so a stale id can never retry-loop every 60s tick.
+- Budget math with discovery (12h floor, 2 tournaments, 2 bookmakers):
+  1 tournaments + 2 fixtures + 2 odds = 5 req/poll × 2/day ≈ 300/mo worst case
+  vs ~250 free — only when 2 tournaments run non-stop all month; quiet weeks
+  cost 2/day. Watch the meter; drop to 1 bookmaker if it gets tight.
 
 ## Validation plan (before it enters the production path)
 

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import psycopg
 
 from adapters.football import LIGA_I_LEAGUE_ID, ApiFootballAdapter
@@ -100,6 +101,19 @@ def is_due(
     return now - last_polled_at >= effective_interval(nearest_kickoff, now, min_interval)
 
 
+def is_client_error(exc: Exception) -> bool:
+    """4xx (except 429): our request/config is wrong or stale — retrying every
+    tick cannot help and burns the provider budget (observed 2026-07-12: a
+    finished OddsPapi tournament 404s -> 60s retry loop). Such failures stamp
+    last_poll so the normal budget floor applies. 429 and 5xx/network stay
+    unstamped: they are transient and a next-tick retry is the right move."""
+    return (
+        isinstance(exc, httpx.HTTPStatusError)
+        and 400 <= exc.response.status_code < 500
+        and exc.response.status_code != 429
+    )
+
+
 def run_tick(
     conn: psycopg.Connection,
     schedules: list[Schedule],
@@ -119,6 +133,9 @@ def run_tick(
             results = fs.adapter.results(now - RESULTS_LOOKBACK)
         except Exception as exc:  # noqa: BLE001 — daemon must survive provider hiccups
             conn.rollback()
+            if is_client_error(exc):
+                set_last_poll(conn, fs.provider, now)
+                conn.commit()
             print(f"[{now:%H:%M:%S}] {fs.provider}: fixtures FAILED: {exc!r}", file=sys.stderr)
             continue
         n_fix = persist_fixtures(conn, fixtures)
@@ -138,6 +155,9 @@ def run_tick(
             n_fix, n_snap = collect_once(conn, s.collector, now, now + s.horizon)
         except Exception as exc:  # noqa: BLE001 — daemon must survive provider hiccups
             conn.rollback()
+            if is_client_error(exc):
+                set_last_poll(conn, provider, now)
+                conn.commit()
             print(f"[{now:%H:%M:%S}] {provider}: poll FAILED: {exc!r}", file=sys.stderr)
             continue
         set_last_poll(conn, provider, now)
@@ -197,10 +217,14 @@ def _csv_env(name: str, default: str) -> list[str]:
 
 
 def build_schedules() -> list[Schedule]:
+    # Default: discover active CS2 tournaments per poll (a fixed id 404s the
+    # moment its event ends). ODDSPAPI_TOURNAMENT_IDS pins ids explicitly.
+    static_ids = [int(t) for t in _csv_env("ODDSPAPI_TOURNAMENT_IDS", "")]
     oddspapi = OddsPapiCollector(
-        tournament_ids=[int(t) for t in _csv_env("ODDSPAPI_TOURNAMENT_IDS", "31621")],
+        tournament_ids=static_ids or None,
         bookmakers=_csv_env("ODDSPAPI_BOOKMAKERS", "pinnacle,superbet.ro"),
         markets_ref=load_markets_ref(_SAMPLES / "oddspapi_markets.json"),
+        max_tournaments=int(os.environ.get("ODDSPAPI_MAX_TOURNAMENTS", "2")),
     )
     therundown = TheRundownCollector(
         sport_ids=[int(s) for s in _csv_env("THERUNDOWN_SPORT_IDS", "18")],

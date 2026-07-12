@@ -27,7 +27,10 @@ WorkingDirectory=/opt/sportbets/workers
 # core.config load_dotenv() reads /opt/sportbets/.env via cwd parent lookup;
 # EnvironmentFile makes it explicit and systemd-native as well.
 EnvironmentFile=/opt/sportbets/.env
-ExecStart=/home/sportbets/.local/bin/uv run python -m tools.run_collectors
+# Run the synced venv directly: `uv run` would need to write ~/.cache/uv,
+# which ProtectHome=read-only forbids. After `git pull` with dependency
+# changes, re-run `uv sync` in /opt/sportbets/workers before restarting.
+ExecStart=/opt/sportbets/workers/.venv/bin/python -m tools.run_collectors
 Restart=on-failure
 RestartSec=30
 # Budget floors are env-config; override here if needed, e.g.:

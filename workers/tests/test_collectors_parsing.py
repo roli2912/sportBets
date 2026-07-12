@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from collectors.oddspapi import OddsPapiCollector
+from collectors.oddspapi import OddsPapiCollector, select_active_tournaments
 from collectors.therundown import TheRundownCollector, american_to_decimal
 
 SAMPLES = Path(__file__).resolve().parents[2] / "docs" / "providers" / "samples"
@@ -137,3 +137,17 @@ def test_oddspapi_skips_suspended_bookmaker(oddspapi: OddsPapiCollector) -> None
     raw = json.loads(json.dumps(_load("oddspapi_odds_cs2_blast.json")[0]))
     raw["bookmakerOdds"]["pinnacle"]["suspended"] = True
     assert oddspapi.parse_snapshots(raw) == []
+
+
+def test_oddspapi_select_active_tournaments_from_sample() -> None:
+    """Discovery picks the busiest tournaments by live counts (a pinned id
+    404s the moment its event ends — observed 2026-07-12 with BLAST 31621)."""
+    rows = _load("oddspapi_tournaments_cs2.json")
+    # sample top counts: 48529 (10 upcoming/future), 50796 (8)
+    assert select_active_tournaments(rows, limit=2) == [48529, 50796]
+    # the cap protects the ~250 req/mo budget
+    assert len(select_active_tournaments(rows, limit=1)) == 1
+    # zero-count tournaments are never selected, even under the cap
+    assert 31621 in select_active_tournaments(rows, limit=10)
+    quiet = [{"tournamentId": 1, "liveFixtures": 0}, {"tournamentId": 2}]
+    assert select_active_tournaments(quiet, limit=2) == []

@@ -74,19 +74,46 @@ def load_markets_ref(path: str | Path) -> list[dict]:
     return json.loads(Path(path).read_text())
 
 
+def select_active_tournaments(tournaments: list[dict], limit: int) -> list[int]:
+    """tournamentIds with live/upcoming fixtures, busiest first. /tournaments
+    rows carry live counts (futureFixtures/upcomingFixtures/liveFixtures per
+    samples/oddspapi_tournaments_cs2.json) — hardcoding an id goes stale the
+    moment an event ends (observed 2026-07-12: finished tournament -> 404)."""
+    scored = sorted(
+        (
+            (
+                t.get("liveFixtures", 0)
+                + t.get("upcomingFixtures", 0)
+                + t.get("futureFixtures", 0),
+                int(t["tournamentId"]),
+            )
+            for t in tournaments
+        ),
+        reverse=True,
+    )
+    return [tid for count, tid in scored[:limit] if count > 0]
+
+
 class OddsPapiCollector:
     provider = PROVIDER
 
     def __init__(
         self,
-        tournament_ids: list[int],
+        tournament_ids: list[int] | None = None,
         bookmakers: list[str] | None = None,
         client: httpx.Client | None = None,
         api_key: str | None = None,
         markets_ref: list[dict] | None = None,
         main_lines_only: bool = True,
+        discover_sport_ids: list[int] | None = None,
+        max_tournaments: int = 2,
     ) -> None:
+        # Static ids (tests, one-off captures) OR discovery per poll from
+        # /tournaments (default: CS2). Discovery costs 1 request per sport per
+        # poll and caps at `max_tournaments` to protect the ~250 req/mo budget.
         self._tournament_ids = tournament_ids
+        self._discover_sport_ids = discover_sport_ids or [17]  # 17 = CS2
+        self._max_tournaments = max_tournaments
         # One request PER bookmaker per odds call — keep this list short.
         self._bookmakers = bookmakers or ["pinnacle"]
         self._api_key = api_key or provider_api_key(PROVIDER)
@@ -124,21 +151,38 @@ class OddsPapiCollector:
         data = self._get("/fixtures", tournamentId=tournament_id)
         return data if isinstance(data, list) else []
 
-    def odds_by_tournaments(self, bookmaker: str) -> list[dict]:
+    def tournaments_for_sport(self, sport_id: int) -> list[dict]:
+        data = self._get("/tournaments", sportId=sport_id)
+        return data if isinstance(data, list) else []
+
+    def odds_by_tournaments(self, bookmaker: str, tournament_ids: list[int]) -> list[dict]:
         # Exactly one `bookmaker` per request (400 otherwise).
         data = self._get(
             "/odds-by-tournaments",
-            tournamentIds=",".join(str(t) for t in self._tournament_ids),
+            tournamentIds=",".join(str(t) for t in tournament_ids),
             bookmaker=bookmaker,
         )
         return data if isinstance(data, list) else []
 
+    def _resolve_tournament_ids(self) -> list[int]:
+        """Static ids if configured, else the busiest active tournaments."""
+        if self._tournament_ids:
+            return self._tournament_ids
+        tournaments: list[dict] = []
+        for sport_id in self._discover_sport_ids:
+            tournaments.extend(self.tournaments_for_sport(sport_id))
+        return select_active_tournaments(tournaments, self._max_tournaments)
+
     # -- OddsCollector ------------------------------------------------------
 
     def poll(self, since: datetime, until: datetime) -> tuple[list[Fixture], list[OddsSnapshot]]:
+        tournament_ids = self._resolve_tournament_ids()
+        if not tournament_ids:
+            return [], []  # nothing active -> skip the odds request entirely
+
         fixtures: list[Fixture] = []
         in_window: set[str] = set()
-        for tournament_id in self._tournament_ids:
+        for tournament_id in tournament_ids:
             for raw in self.fixtures_for_tournament(tournament_id):
                 fx = self.parse_fixture(raw)
                 if fx is None or not since <= fx.commence_time <= until:
@@ -148,7 +192,7 @@ class OddsPapiCollector:
 
         snapshots: list[OddsSnapshot] = []
         for bookmaker in self._bookmakers:
-            for raw in self.odds_by_tournaments(bookmaker):
+            for raw in self.odds_by_tournaments(bookmaker, tournament_ids):
                 if raw.get("fixtureId") in in_window:
                     snapshots.extend(self.parse_snapshots(raw))
         return fixtures, snapshots
