@@ -49,7 +49,9 @@ from engine.board import refresh_ev_board
 from engine.daily_feed import build_daily_feed
 from engine.picks import ensure_market_models, publish_from_board
 from grading.grade import grade_picks
+from publishing.telegram import post_daily_digest, post_new_picks, sender_from_env
 from resolver.resolver import merge_duplicate_events, resolve_events
+from tools.proof_export import export_proof, git_publish
 
 TICK_SECONDS = 60.0
 # No known upcoming events -> still poll at this pace to discover fixtures.
@@ -58,6 +60,8 @@ DISCOVERY_INTERVAL = timedelta(hours=24)
 RESULTS_LOOKBACK = timedelta(days=7)
 # §11: explainer runs in nightly batches.
 EXPLAINER_INTERVAL = timedelta(hours=24)
+# §6 proof layer: nightly export cadence.
+PROOF_EXPORT_INTERVAL = timedelta(hours=24)
 
 _SAMPLES = Path(__file__).resolve().parents[2] / "docs" / "providers" / "samples"
 
@@ -204,6 +208,39 @@ def run_tick(
         conn.commit()
         if n_feed:
             print(f"daily feed: {n_feed} entries frozen for {now:%Y-%m-%d}")
+
+    # §13 Task 4: Telegram mirror of the immutable picks. Idempotent via
+    # outbound_posts; delivery failures never block collection.
+    sender = sender_from_env()
+    if sender is not None:
+        try:
+            digest_sent = post_daily_digest(conn, sender)
+            n_posts = post_new_picks(conn, sender)
+            conn.commit()
+            if digest_sent or n_posts:
+                print(f"telegram: digest={'yes' if digest_sent else 'no'}, {n_posts} pick posts")
+        except Exception as exc:  # noqa: BLE001 — daemon must survive API hiccups
+            conn.rollback()
+            print(f"telegram FAILED: {exc!r}", file=sys.stderr)
+
+    # §6 proof layer: nightly append-only JSONL export of picks+settlements.
+    now = datetime.now(UTC)
+    proof_dir = os.environ.get("PROOF_EXPORT_DIR", "").strip()
+    last_export = get_last_poll(conn, "proof_export")
+    if proof_dir and (last_export is None or now - last_export >= PROOF_EXPORT_INTERVAL):
+        try:
+            counts = export_proof(conn, proof_dir)
+            pushed = git_publish(proof_dir) if os.environ.get("PROOF_EXPORT_GIT") == "1" else False
+            set_last_poll(conn, "proof_export", now)
+            conn.commit()
+            if counts["picks"] or counts["settlements"]:
+                print(
+                    f"proof export: +{counts['picks']} picks, "
+                    f"+{counts['settlements']} settlements{' (pushed)' if pushed else ''}"
+                )
+        except Exception as exc:  # noqa: BLE001 — daemon must survive git/fs hiccups
+            conn.rollback()
+            print(f"proof export FAILED: {exc!r}", file=sys.stderr)
 
     # §11: explainer runs as a nightly batch; failures never block collection.
     now = datetime.now(UTC)
