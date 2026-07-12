@@ -266,6 +266,29 @@ def merge_duplicate_events(conn: psycopg.Connection) -> int:
                 "update odds_snapshots set event_id = %s where event_id = %s",
                 (keep_id, dupe_id),
             )
+            # A result may have attached to the dupe before the merge (second
+            # results provider). Carry it over unless the kept event already
+            # has one (first-reporter-wins, §10.4), then clear the leftover so
+            # the FK allows the delete. Scores were oriented to the DUPE's
+            # home/away — swap them if the kept event is oriented the other way
+            # (the merge matches team pairs unordered).
+            cur.execute(
+                "select e1.home_team = e2.away_team from events e1, events e2"
+                " where e1.id = %s and e2.id = %s",
+                (keep_id, dupe_id),
+            )
+            reversed_orientation = cur.fetchone()[0]
+            cur.execute(
+                """
+                update event_results set event_id = %s,
+                  home_score = case when %s then away_score else home_score end,
+                  away_score = case when %s then home_score else away_score end
+                where event_id = %s
+                  and not exists (select 1 from event_results where event_id = %s)
+                """,
+                (keep_id, reversed_orientation, reversed_orientation, dupe_id, keep_id),
+            )
+            cur.execute("delete from event_results where event_id = %s", (dupe_id,))
             cur.execute("delete from ev_board where event_id = %s", (dupe_id,))
             cur.execute("delete from events where id = %s", (dupe_id,))
             merged += 1

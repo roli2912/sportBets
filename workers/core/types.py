@@ -31,13 +31,21 @@ class Fixture(BaseModel):
 
 
 class Result(BaseModel):
-    """A finished match result as reported by one provider."""
+    """A finished match result as reported by one provider.
+
+    `home_name`/`away_name` are the provider's raw names for the score order it
+    reported. Esports providers have no true home/away (order is arbitrary), so
+    persist_results uses these names to align scores with the event's resolved
+    orientation instead of trusting position blindly. Optional for providers
+    with a real home/away (football)."""
 
     provider: str
     provider_key: str
     sport_id: str
     home_score: int
     away_score: int
+    home_name: str | None = None
+    away_name: str | None = None
     finished_at: datetime | None = None
     raw_status: str | None = None
 

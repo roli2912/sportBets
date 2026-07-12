@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from adapters.cs2 import PandaScoreAdapter, _commence_time, parse_fixture, parse_result
 from collectors.oddspapi import OddsPapiCollector, select_active_tournaments
 from collectors.therundown import TheRundownCollector, american_to_decimal
 
@@ -151,3 +152,135 @@ def test_oddspapi_select_active_tournaments_from_sample() -> None:
     assert 31621 in select_active_tournaments(rows, limit=10)
     quiet = [{"tournamentId": 1, "liveFixtures": 0}, {"tournamentId": 2}]
     assert select_active_tournaments(quiet, limit=2) == []
+
+
+# -- PandaScore (CS2 stats side) ----------------------------------------------
+
+
+@pytest.fixture
+def ps_upcoming() -> list[dict]:
+    return _load("pandascore_matches_upcoming_cs2.json")
+
+
+@pytest.fixture
+def ps_past() -> list[dict]:
+    return _load("pandascore_matches_past_cs2.json")
+
+
+def test_pandascore_parse_fixture(ps_upcoming: list[dict]) -> None:
+    fx = parse_fixture(ps_upcoming[0])
+    assert fx is not None
+    assert fx.provider == "pandascore"
+    assert fx.provider_key == "1577290"
+    assert fx.sport_id == "cs2"
+    assert fx.competition_name == "Thunderpick World Championship"
+    # Esports has no home/away — these are just opponents[0]/[1] in
+    # PandaScore's own order (docs/providers/pandascore.md).
+    assert fx.home_name == "largadosypelados"
+    assert fx.away_name == "Imperial"
+    assert fx.commence_time == datetime(2026, 7, 12, 21, 0, tzinfo=UTC)
+
+
+def test_pandascore_fixture_skips_tbd_opponents(
+    ps_upcoming: list[dict], ps_past: list[dict]
+) -> None:
+    """Bracket slots not yet settled -> fewer than 2 opponents -> skip."""
+    tbd = {m["id"]: m for m in ps_upcoming + ps_past if len(m.get("opponents", [])) != 2}
+    assert tbd, "samples contain TBD rows (ids 1577291, 1582130 at capture time)"
+    for match in tbd.values():
+        assert parse_fixture(match) is None
+        assert parse_result(match) is None
+
+
+def test_pandascore_parse_result_scores_by_team_id(ps_past: list[dict]) -> None:
+    """Scores come from results[].team_id mapping, never list position, and the
+    Result carries the provider's raw names so persist_results can align
+    orientation after cross-provider merges."""
+    res = parse_result(ps_past[0])
+    assert res is not None
+    assert res.provider == "pandascore"
+    assert res.provider_key == "1200600"
+    assert res.sport_id == "cs2"
+    # opponents: (135743, BESTIA Academy), (135505, RED Canids Academy)
+    # results:   {135743: 0}, {135505: 2}
+    assert res.home_name == "BESTIA Academy"
+    assert res.away_name == "RED Canids Academy"
+    assert (res.home_score, res.away_score) == (0, 2)
+    assert res.raw_status == "finished"
+    assert res.finished_at is None  # all timestamps null on this real row
+
+
+def test_pandascore_result_requires_finished(ps_upcoming: list[dict]) -> None:
+    assert ps_upcoming[0]["status"] == "not_started"
+    assert parse_result(ps_upcoming[0]) is None
+
+
+def test_pandascore_commence_time_fallback_chain() -> None:
+    assert _commence_time({"begin_at": "2026-07-12T21:00:00Z"}) == datetime(
+        2026, 7, 12, 21, 0, tzinfo=UTC
+    )
+    assert _commence_time({"begin_at": None, "scheduled_at": "2026-07-12T22:00:00Z"}) == datetime(
+        2026, 7, 12, 22, 0, tzinfo=UTC
+    )
+    assert _commence_time(
+        {"begin_at": None, "scheduled_at": None, "original_scheduled_at": "2026-07-12T23:00:00Z"}
+    ) == datetime(2026, 7, 12, 23, 0, tzinfo=UTC)
+    # observed on a real finished row (id 1200600): all three null
+    assert (
+        _commence_time({"begin_at": None, "scheduled_at": None, "original_scheduled_at": None})
+        is None
+    )
+
+
+class _FakePandaClient:
+    """Stands in for httpx.Client — replays the captured sample pages."""
+
+    def __init__(self, pages: dict[str, list[dict]]) -> None:
+        self._pages = pages
+        self.calls: list[str] = []
+
+    def get(self, path: str, params: dict | None = None):  # noqa: ANN201 - test stub
+        self.calls.append(path)
+        import httpx
+
+        return httpx.Response(
+            200,
+            json=self._pages[path],
+            request=httpx.Request("GET", f"https://api.pandascore.co{path}"),
+        )
+
+
+def test_pandascore_results_keeps_timestampless_rows(ps_past: list[dict]) -> None:
+    """A finished match with ALL timestamps null cannot be window-filtered —
+    it must still be returned (persist_results only attaches known events)."""
+    client = _FakePandaClient({"/csgo/matches/past": ps_past})
+    adapter = PandaScoreAdapter(client=client, api_key="test")  # type: ignore[arg-type]
+    # `since` far in the future: only timestamp-less rows can survive.
+    results = adapter.results(since=datetime(2030, 1, 1, tzinfo=UTC))
+    assert [r.provider_key for r in results] == ["1200600"]
+
+
+def test_pandascore_results_window_filter(ps_past: list[dict]) -> None:
+    client = _FakePandaClient({"/csgo/matches/past": ps_past})
+    adapter = PandaScoreAdapter(client=client, api_key="test")  # type: ignore[arg-type]
+    results = adapter.results(since=datetime(2020, 1, 1, tzinfo=UTC))
+    keys = {r.provider_key for r in results}
+    assert "1200600" in keys  # timestamp-less row kept
+    assert "1582113" in keys  # begin_at 2026-07-12 >= since
+
+
+def test_pandascore_fixtures_window_filter(ps_upcoming: list[dict]) -> None:
+    client = _FakePandaClient({"/csgo/matches/upcoming": ps_upcoming})
+    adapter = PandaScoreAdapter(client=client, api_key="test")  # type: ignore[arg-type]
+    window = adapter.fixtures(
+        since=datetime(2026, 7, 12, tzinfo=UTC), until=datetime(2026, 7, 13, tzinfo=UTC)
+    )
+    assert any(fx.provider_key == "1577290" for fx in window)
+    assert all(
+        datetime(2026, 7, 12, tzinfo=UTC) <= fx.commence_time <= datetime(2026, 7, 13, tzinfo=UTC)
+        for fx in window
+    )
+    nothing = adapter.fixtures(
+        since=datetime(2030, 1, 1, tzinfo=UTC), until=datetime(2030, 1, 2, tzinfo=UTC)
+    )
+    assert nothing == []

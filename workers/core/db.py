@@ -115,12 +115,42 @@ def insert_snapshots(
     return len(rows)
 
 
+def _oriented_scores(cur: psycopg.Cursor, event_id: UUID, r: Result) -> tuple[int, int] | None:
+    """Align a name-carrying result with the event's home/away orientation.
+
+    Esports providers order teams arbitrarily; after cross-provider merges the
+    event's orientation can differ from the result's, and writing scores by
+    position would grade wins as losses. Names resolve through team_aliases
+    (the resolver's output). Anything unresolved -> None: skip now, retry on a
+    later poll once the resolver has caught up — never guess (§7)."""
+    cur.execute("select home_team, away_team from events where id = %s", (event_id,))
+    row = cur.fetchone()
+    if row is None or row[0] is None or row[1] is None:
+        return None  # event teams not resolved yet
+    event_home, event_away = row
+    ids: list[UUID | None] = []
+    for name in (r.home_name, r.away_name):
+        cur.execute(
+            "select team_id from team_aliases where provider = %s and lower(alias) = lower(%s)",
+            (r.provider, name),
+        )
+        alias = cur.fetchone()
+        ids.append(alias[0] if alias else None)
+    if (ids[0], ids[1]) == (event_home, event_away):
+        return r.home_score, r.away_score
+    if (ids[0], ids[1]) == (event_away, event_home):
+        return r.away_score, r.home_score
+    return None  # unresolved alias or team mismatch — block visibly, not wrongly
+
+
 def persist_results(conn: psycopg.Connection, results: Iterable[Result]) -> int:
     """Attach provider results to known events and mark them finished.
 
     First provider to report wins — event_results rows never mutate (they feed
     grading, §10.4). Results for events we never ingested are skipped silently:
     they belong to fixtures outside our window, not to the pick universe.
+    Results carrying team names are aligned to the event's resolved orientation
+    first (see _oriented_scores); positional trust is football-only.
     """
     written = 0
     with conn.cursor() as cur:
@@ -128,6 +158,12 @@ def persist_results(conn: psycopg.Connection, results: Iterable[Result]) -> int:
             event_id = get_event_id(conn, provider=r.provider, provider_key=r.provider_key)
             if event_id is None:
                 continue
+            if r.home_name and r.away_name:
+                scores = _oriented_scores(cur, event_id, r)
+                if scores is None:
+                    continue
+            else:
+                scores = (r.home_score, r.away_score)
             cur.execute(
                 """
                 insert into event_results
@@ -135,7 +171,7 @@ def persist_results(conn: psycopg.Connection, results: Iterable[Result]) -> int:
                 values (%s, %s, %s, %s, %s)
                 on conflict (event_id) do nothing
                 """,
-                (event_id, r.provider, r.home_score, r.away_score, r.finished_at),
+                (event_id, r.provider, scores[0], scores[1], r.finished_at),
             )
             if cur.rowcount:
                 cur.execute(

@@ -27,6 +27,8 @@ from pathlib import Path
 import httpx
 import psycopg
 
+from adapters.cs2 import PROVIDER as PANDASCORE
+from adapters.cs2 import PandaScoreAdapter
 from adapters.football import LIGA_I_LEAGUE_ID, ApiFootballAdapter
 from adapters.football import PROVIDER as API_FOOTBALL
 from agents.explainer import explain_pending
@@ -257,7 +259,15 @@ def build_fixture_schedules() -> list[FixtureSchedule]:
             # is generous; fixtures barely move intra-day.
             interval=timedelta(hours=float(os.environ.get("API_FOOTBALL_MIN_POLL_HOURS", "24"))),
             horizon=timedelta(days=14),
-        )
+        ),
+        FixtureSchedule(
+            adapter=PandaScoreAdapter(),
+            provider=PANDASCORE,
+            # 2 requests per poll vs 1,000/hr free — 6h keeps CS2 grading
+            # same-day without touching the budget.
+            interval=timedelta(hours=float(os.environ.get("PANDASCORE_MIN_POLL_HOURS", "6"))),
+            horizon=timedelta(days=14),
+        ),
     ]
 
 
